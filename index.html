@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Document</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.3.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.3.0/mapbox-gl.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@5/turf.min.js"></script>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            font-family: 'Open Sans', sans-serif !important;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Open Sans', sans-serif !important;
+        }
+
+        .mapboxgl-popup-content {
+            min-width: 200px;
+
+        }
+
+        /* ACCORDION PART  */
+        .accordion {
+            background-color: #74a3b4;
+            color: white;
+            cursor: pointer;
+            padding: 10px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 15px;
+            transition: 0.4s;
+        }
+
+        .active,
+        .accordion:hover {
+            background-color: #32839a;
+        }
+
+        .accordion:after {
+            content: '\002B';
+            color: white;
+            font-weight: bold;
+            float: right;
+            margin-left: 5px;
+        }
+
+        .active:after {
+            content: "\2212";
+        }
+
+        .panel {
+            background-color: white;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.2s ease-out;
+        }
+
+        .panel p {
+            padding: 10px;
+        }
+
+        #accordionMenu {
+            position: absolute;
+            z-index: 1000;
+            top: 20px;
+            left: 20px;
+            max-width: 300px;
+
+        }
+
+        .clinicItem {
+            background-color: white;
+            padding: 8px;
+            cursor: pointer;
+        }
+
+        .clinicItem:hover {
+            background-color: rgb(238, 238, 238);
+            padding: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="map"></div>
+    <div id="accordionMenu"></div>
+
+    <script>
+
+
+        var accrd = document.getElementById('acc');
+        var filterGroup = document.getElementById('filter-group');
+        var zoom = document.getElementById('zoom');
+        const categories = [];
+        const sData = {};
+        let dataReady = false;
+        let mapReady = false;
+        const pinsData = [];
+        const filtersDiv = document.querySelector("#filters");
+        const toggleButton = document.querySelector("#toggle");
+
+        const icons = [
+            { name: "bottle", url: 'bottle.png' },
+        ]
+
+
+        mapboxgl.accessToken = 'pk.eyJ1IjoiYnJ5Y2Vsb2trZW4iLCJhIjoiY2twN2pia2o2MDBwdTJ1bW50N2I2MGZpeiJ9.q3vF6As9mDEAI8Na2UmtXg';
+        var map = (window.map = new mapboxgl.Map({
+            container: 'map',
+            zoom: 3,
+            center: [-114, 51],
+            style: 'mapbox://styles/mapbox/light-v10',
+            antialias: true // create the gl context with MSAA antialiasing, so custom layers are antialiased
+        }));
+        map.addControl(new mapboxgl.NavigationControl());
+
+        let counter = 0;
+
+        map.on('load', function () {
+
+            icons.forEach(i => {
+                console.log('i', i);
+                const checkIcon = new Image(22, 32);
+                checkIcon.onload = () => map.addImage(i.name, checkIcon)
+                checkIcon.src = i.url;
+            })
+
+            d3.csv('https://docs.google.com/spreadsheets/d/e/2PACX-1vT7L59mrsHLgOVqRu-gwTUu3IOf8lM2apvOAfUhqhEhi1iMHUY3QRXu3MCF58mqAZoejnZTyQVGXsBx/pub?output=csv').then(data => {
+                ready(data)
+            })
+
+            map.addSource('pins', {
+                "type": "geojson",
+                "data": {
+                    "type": "FeatureCollection",
+                    "features": []
+                }
+            });
+            map.addLayer({
+                'id': 'icon',
+                'source': 'pins',
+                'type': 'symbol',
+                'layout': {
+                    'icon-image': ['get', 'icon'],
+                    'icon-rotation-alignment': 'map',
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true
+                }
+            });
+
+            map.on('click', 'icon', function (e) {
+
+                var coordinates = e.features[0].geometry.coordinates.slice();
+                var features = map.queryRenderedFeatures(map.project(coordinates), { layers: ['icon'] });
+
+                var info = e.features[0].properties;
+                let { Name, Products, SingleLineAddress } = info
+                const text = `
+                    <h2>${Name}</h2>
+                    <h3 style="color:gray">${Products}</h3>
+                    <div class="descr">${SingleLineAddress}</div>
+                    `
+                new mapboxgl.Popup()
+                    .setLngLat(coordinates)
+                    .setHTML(text)
+                    .addTo(map);
+
+
+            });
+            map.on('mouseenter', 'icon', function () {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'icon', function () {
+                map.getCanvas().style.cursor = '';
+            });
+            mapReady = true;
+
+        });
+
+
+        function ready(data) {
+
+            console.log('data', data);
+
+            //buildMenu(data)
+
+            const pinsData = data;
+            let bounds = new mapboxgl.LngLatBounds();
+            const pins = pinsData.filter(i => i.Lat && i.Lng).map(i => {
+                const latlng = [+i.Lng, +i.Lat];
+                bounds.extend(latlng)
+                return turf.point(latlng, { ...i, icon: "bottle" });
+            })
+
+            const collection = turf.featureCollection(pins)
+            console.log('',);
+            map.getSource("pins").setData(collection)
+            map.fitBounds(bounds, { padding: 100, maxZoom: 15 })
+        }
+
+        /*
+      
+      
+              function buildMenu(data) {
+      
+                  console.log('data', data);
+      
+                  const menu = document.getElementById("accordionMenu");
+      
+                  const cat = [...new Set(data.map(i => i.category))];
+                  console.log('cat', cat);
+      
+                  cat.forEach(i => {
+                      const items = data.filter(f => f.category === i).map(d => {
+                          return `
+                  <div class="clinicItem" coords="[${d.lng},${d.lat}]">
+                    ${d.name}
+                  </div>
+                `
+                      }).join("")
+                      menu.innerHTML += `<button class="accordion">${i}</button>
+                <div class="panel" >
+                  ${items}
+                </div>
+              `;
+                  })
+      
+                  var acc = document.getElementsByClassName("accordion");
+                  var i;
+                  for (i = 0; i < acc.length; i++) {
+                      acc[i].addEventListener("click", function () {
+      
+                          this.classList.toggle("active");
+                          var panel = this.nextElementSibling;
+                          if (panel.style.maxHeight) {
+                              panel.style.maxHeight = null;
+                          } else {
+                              panel.style.maxHeight = panel.scrollHeight + "px";
+                          }
+      
+                      });
+                  }
+      
+                  var cItem = document.getElementsByClassName("clinicItem");
+                  var s;
+                  for (s = 0; s < cItem.length; s++) {
+                      cItem[s].addEventListener("click", function () {
+                          // console.log('this', this);
+      
+                          const coords = JSON.parse(this.getAttribute("coords"));
+                          console.log('coords', coords);
+      
+      
+                          let mapZoom = (map.getZoom() >= 12) ? map.getZoom() : 12;
+      
+                          map.flyTo({
+                              center: coords,
+                              zoom: mapZoom
+                          })
+      
+                          map.once('moveend', function () {
+                              console.log("callback zoomend")
+                              setTimeout(() => {
+                                  map.fire('click', { latLng: coords, point: map.project(coords) })
+                              }, 200)
+                          });
+                          //map.fire('click', coords)
+                      });
+                  }
+              }
+              */
+
+
+    </script>
+
+</body>
+
+</html>
